@@ -311,10 +311,11 @@ func (s *Session) writeMessage(deadline time.Time, message *message) (int, error
 }
 
 func (s *Session) Close() {
+	// A ping may be waiting for the session lock while synchronizing connections.
+	s.stopPings()
+
 	s.Lock()
 	defer s.Unlock()
-
-	s.stopPings()
 
 	for _, connection := range s.conns {
 		connection.tunnelClose(errors.New("tunnel disconnect"))

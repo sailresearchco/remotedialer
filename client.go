@@ -67,7 +67,14 @@ func ConnectToProxyWithDialer(rootCtx context.Context, proxyURL string, headers 
 	ctx = context.WithValue(ctx, ContextKeyCaller, fmt.Sprintf("ConnectToProxy: url: %s", proxyURL))
 
 	session := NewClientSessionWithDialer(auth, ws, localDialer)
-	defer session.Close()
+	serveDone := make(chan struct{})
+	defer func() {
+		// Unblock the reader and join Serve before Close touches ping state.
+		cancel()
+		_ = ws.Close()
+		<-serveDone
+		session.Close()
+	}()
 
 	if onConnect != nil {
 		go func() {
@@ -78,8 +85,9 @@ func ConnectToProxyWithDialer(rootCtx context.Context, proxyURL string, headers 
 	}
 
 	go func() {
-		_, err = session.Serve(ctx)
-		result <- err
+		defer close(serveDone)
+		_, serveErr := session.Serve(ctx)
+		result <- serveErr
 	}()
 
 	select {
